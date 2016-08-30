@@ -4125,8 +4125,13 @@ static bool tcp_try_coalesce(struct sock *sk,
 			     bool *fragstolen)
 {
 	int delta;
-
+	struct tcp_sock *tp = tcp_sk(sk);
 	*fragstolen = false;
+
+	if (tp->oodelivery == 1) {
+		printk("Hollywood: no coalescing..\n");
+		return false;
+	}
 
 	/* Its possible this segment overlaps with prior segment in queue */
 	if (TCP_SKB_CB(from)->seq != TCP_SKB_CB(to)->end_seq)
@@ -4175,6 +4180,29 @@ static void tcp_ofo_queue(struct sock *sk)
 			   tp->rcv_nxt, TCP_SKB_CB(skb)->seq,
 			   TCP_SKB_CB(skb)->end_seq);
 
+		if (tp->oodelivery == 1 && skb->len > 0) {
+			printk("Hollywood: ofo->recv (seq: %X, len: %d)\n", TCP_SKB_CB(skb)->seq,  skb->len);
+			struct tcp_hlywd_incseg *hlywd_metadata = (struct tcp_hlywd_incseg *) kmalloc(sizeof(struct tcp_hlywd_incseg), GFP_KERNEL);
+			if (hlywd_metadata) {
+				hlywd_metadata->seq = TCP_SKB_CB(skb)->seq;
+				hlywd_metadata->len = skb->len;
+				printk("Hollywood: incoming segment (seq: %X, len: %d) -- ofo->recv\n", hlywd_metadata->seq, hlywd_metadata->len);
+				// add to tail of metadata queue
+				hlywd_metadata->next = NULL;
+				hlywd_metadata->data = NULL;
+				hlywd_metadata->offset = 0;
+				if (tp->hlywd_incseg_head == NULL) {
+					tp->hlywd_incseg_head = hlywd_metadata;
+					tp->hlywd_incseg_tail = hlywd_metadata;
+				} else {
+					tp->hlywd_incseg_tail->next = hlywd_metadata;
+					tp->hlywd_incseg_tail = hlywd_metadata;
+				}
+			} else {
+				printk("Hollywood: kmalloc failed.. incoming segment (seq: %X, len: %d) -- ofo->recv\n", TCP_SKB_CB(skb)->seq, skb->len);
+			}
+		}
+
 		tail = skb_peek_tail(&sk->sk_receive_queue);
 		eaten = tail && tcp_try_coalesce(sk, tail, skb, &fragstolen);
 		tp->rcv_nxt = TCP_SKB_CB(skb)->end_seq;
@@ -4215,6 +4243,7 @@ static void tcp_data_queue_ofo(struct sock *sk, struct sk_buff *skb)
 	struct tcp_sock *tp = tcp_sk(sk);
 	struct sk_buff *skb1;
 	u32 seq, end_seq;
+	int tcp_header_len = tp->tcp_header_len;
 
 	tcp_ecn_check_ce(tp, skb);
 
@@ -4227,6 +4256,33 @@ static void tcp_data_queue_ofo(struct sock *sk, struct sk_buff *skb)
 	/* Disable header prediction. */
 	tp->pred_flags = 0;
 	inet_csk_schedule_ack(sk);
+
+	if(tp->oodelivery == 1 && (skb->len-tcp_header_len) > 0) {
+		printk("Hollywood: incoming segment (seq: %X, len: %d) -- out-of-order\n", TCP_SKB_CB(skb)->seq,  skb->len-tcp_header_len);
+		struct tcp_hlywd_incseg *hlywd_metadata = (struct tcp_hlywd_incseg *) kmalloc(sizeof(struct tcp_hlywd_incseg), GFP_KERNEL);
+		if (hlywd_metadata) {
+			void *hlywd_oo_data = (void *) kmalloc(skb->len-tcp_header_len, GFP_KERNEL);
+			if (hlywd_oo_data) {
+				hlywd_metadata->seq = TCP_SKB_CB(skb)->seq;
+				hlywd_metadata->len = skb->len-tcp_header_len;
+				hlywd_metadata->next = NULL;
+				skb_copy_bits(skb, 0, hlywd_oo_data, skb->len-tcp_header_len);
+				hlywd_metadata->data = hlywd_oo_data;
+				hlywd_metadata->offset = 0;
+				if (tp->hlywd_incseg_head == NULL) {
+					tp->hlywd_incseg_head = hlywd_metadata;
+					tp->hlywd_incseg_tail = hlywd_metadata;
+				} else {
+					tp->hlywd_incseg_tail->next = hlywd_metadata;
+					tp->hlywd_incseg_tail = hlywd_metadata;
+				}
+			} else {
+				printk("Hollywood: kmalloc failed for data copy\n");
+			}
+		} else {
+			printk("Hollywood: kmalloc failed..\n");
+		}
+	}
 
 	NET_INC_STATS_BH(sock_net(sk), LINUX_MIB_TCPOFOQUEUE);
 	SOCK_DEBUG(sk, "out of order segment: rcv_next %X seq %X - %X\n",
@@ -4341,6 +4397,30 @@ static int __must_check tcp_queue_rcv(struct sock *sk, struct sk_buff *skb, int 
 {
 	int eaten;
 	struct sk_buff *tail = skb_peek_tail(&sk->sk_receive_queue);
+	struct tcp_sock *tp = tcp_sk(sk);
+
+	if(tp->oodelivery == 1 && (skb->len-hdrlen) > 0) {
+		printk("Hollywood: queueing skb with length %d..\n", skb->len-hdrlen);
+		struct tcp_hlywd_incseg *hlywd_metadata = (struct tcp_hlywd_incseg *) kmalloc(sizeof(struct tcp_hlywd_incseg), GFP_KERNEL);
+		if (hlywd_metadata) {
+			hlywd_metadata->seq = TCP_SKB_CB(skb)->seq;
+			hlywd_metadata->len = skb->len-hdrlen;
+			printk("Hollywood: incoming segment (seq: %X, len: %d) -- queued\n", hlywd_metadata->seq, hlywd_metadata->len);
+			// add to tail of metadata queue
+			hlywd_metadata->next = NULL;
+			hlywd_metadata->data = NULL;
+			hlywd_metadata->offset = 0;
+			if (tp->hlywd_incseg_head == NULL) {
+				tp->hlywd_incseg_head = hlywd_metadata;
+				tp->hlywd_incseg_tail = hlywd_metadata;
+			} else {
+				tp->hlywd_incseg_tail->next = hlywd_metadata;
+				tp->hlywd_incseg_tail = hlywd_metadata;
+			}
+		} else {
+			printk("Hollywood: kmalloc failed.. incoming segment (seq: %X, len: %d) -- queued\n", TCP_SKB_CB(skb)->seq, skb->len-hdrlen);
+		}
+	}
 
 	__skb_pull(skb, hdrlen);
 	eaten = (tail &&
@@ -4437,7 +4517,7 @@ static void tcp_data_queue(struct sock *sk, struct sk_buff *skb)
 			__set_current_state(TASK_RUNNING);
 
 			local_bh_enable();
-			if (!skb_copy_datagram_iovec(skb, 0, tp->ucopy.iov, chunk)) {
+			if (!(tp->oodelivery == 1) && !skb_copy_datagram_iovec(skb, 0, tp->ucopy.iov, chunk)) {
 				tp->ucopy.len -= chunk;
 				tp->copied_seq += chunk;
 				eaten = (chunk == skb->len);
@@ -4451,7 +4531,6 @@ queue_and_out:
 			if (eaten < 0 &&
 			    tcp_try_rmem_schedule(sk, skb, skb->truesize))
 				goto drop;
-
 			eaten = tcp_queue_rcv(sk, skb, 0, &fragstolen);
 		}
 		tp->rcv_nxt = TCP_SKB_CB(skb)->end_seq;
@@ -4502,6 +4581,7 @@ drop:
 	tcp_enter_quickack_mode(sk);
 
 	if (before(TCP_SKB_CB(skb)->seq, tp->rcv_nxt)) {
+
 		/* Partial packet, seq < rcv_next < end_seq */
 		SOCK_DEBUG(sk, "partial packet: rcv_next %X seq %X - %X\n",
 			   tp->rcv_nxt, TCP_SKB_CB(skb)->seq,
@@ -5181,7 +5261,7 @@ void tcp_rcv_established(struct sock *sk, struct sk_buff *skb,
 			    sock_owned_by_user(sk)) {
 				__set_current_state(TASK_RUNNING);
 
-				if (!tcp_copy_to_iovec(sk, skb, tcp_header_len)) {
+				if (!(tp->oodelivery == 1) && !tcp_copy_to_iovec(sk, skb, tcp_header_len)) {
 					/* Predicted packet is in window by definition.
 					 * seq == rcv_nxt and rcv_wup <= rcv_nxt.
 					 * Hence, check seq<=rcv_wup reduces to:

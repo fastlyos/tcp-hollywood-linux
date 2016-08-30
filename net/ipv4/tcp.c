@@ -418,6 +418,8 @@ void tcp_init_sock(struct sock *sk)
 	sk->sk_sndbuf = sysctl_tcp_wmem[1];
 	sk->sk_rcvbuf = sysctl_tcp_rmem[1];
 
+	tp->oodelivery = 2;
+
 	local_bh_disable();
 	sock_update_memcg(sk);
 	sk_sockets_allocated_inc(sk);
@@ -1596,6 +1598,10 @@ int tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 	struct task_struct *user_recv = NULL;
 	struct sk_buff *skb;
 	u32 urg_hole = 0;
+	int hlywd_incseg_set = 0;
+	u32 cached_offset;
+	u32 hlywd_seqnum;
+	u32 hlywd_offset = 0;
 
 	if (unlikely(flags & MSG_ERRQUEUE))
 		return inet_recv_error(sk, msg, len, addr_len);
@@ -1663,6 +1669,40 @@ int tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 				 *seq, TCP_SKB_CB(skb)->seq, tp->rcv_nxt,
 				 flags))
 				break;
+
+			if (hlywd_incseg_set == 0 && tp->oodelivery == 1) {
+				printk("Hollywood: tcp_recvmsg (len: %d)\n", len);
+				if (tp->hlywd_incseg_head != NULL) {
+					printk("Hollywood: head segment length is %d, len is %d ..\n", tp->hlywd_incseg_head->len, len);
+					void *hlywd_seg_data = NULL;
+					if (tp->hlywd_incseg_head->len > len-4) {
+						/* want to copy more than possible .. */
+						tp->hlywd_incseg_head->offset += len-4;
+						hlywd_seqnum = tp->hlywd_incseg_head->seq;
+						len = len - 4;
+						hlywd_seg_data = tp->hlywd_incseg_head->data;
+					} else {
+						len = tp->hlywd_incseg_head->len-tp->hlywd_incseg_head->offset;
+						hlywd_seqnum = tp->hlywd_incseg_head->seq+tp->hlywd_incseg_head->offset;
+						hlywd_offset = tp->hlywd_incseg_head->offset;
+						hlywd_seg_data = tp->hlywd_incseg_head->data;
+						struct tcp_hlywd_incseg *head = tp->hlywd_incseg_head;
+						tp->hlywd_incseg_head = head->next;
+						kfree(head);
+					}
+					hlywd_incseg_set = 1;
+					if (hlywd_seg_data != NULL) {
+						/* out of order segment */
+						printk("Hollywood: copying out-of-order segment");
+						memcpy_toiovec(msg->msg_iov, (unsigned char *) hlywd_seg_data, len);
+						memcpy_toiovec(msg->msg_iov, (unsigned char *) &hlywd_seqnum, 4);
+						return len+4;
+					}
+				} else {
+					printk("Hollywood: no head segment.. \n");
+					//continue;
+				}
+			}
 
 			offset = *seq - TCP_SKB_CB(skb)->seq;
 			if (TCP_SKB_CB(skb)->tcp_flags & TCPHDR_SYN)
@@ -1785,6 +1825,9 @@ int tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 				NET_ADD_STATS_USER(sock_net(sk), LINUX_MIB_TCPDIRECTCOPYFROMBACKLOG, chunk);
 				len -= chunk;
 				copied += chunk;
+				if (tp->oodelivery == 1) {
+					printk("Hollywood: copied - direct copy from backlog\n", len);
+				}
 			}
 
 			if (tp->rcv_nxt == tp->copied_seq &&
@@ -1796,6 +1839,9 @@ do_prequeue:
 					NET_ADD_STATS_USER(sock_net(sk), LINUX_MIB_TCPDIRECTCOPYFROMPREQUEUE, chunk);
 					len -= chunk;
 					copied += chunk;
+					if (tp->oodelivery == 1) {
+						printk("Hollywood: copied - direct copy from prequeue\n", len);
+					}
 				}
 			}
 		}
@@ -1833,6 +1879,12 @@ do_prequeue:
 		}
 
 		if (!(flags & MSG_TRUNC)) {
+			if (tp->oodelivery == 1) {
+				cached_offset = offset;
+				used += offset;
+				used -= hlywd_offset;
+				offset = hlywd_offset;
+			}
 			err = skb_copy_datagram_iovec(skb, offset,
 						      msg->msg_iov, used);
 			if (err) {
@@ -1841,10 +1893,18 @@ do_prequeue:
 					copied = -EFAULT;
 				break;
 			}
+			if (tp->oodelivery == 1) {
+				offset = cached_offset;
+				used -= offset;
+				used += hlywd_offset;
+			}
 		}
 
 		*seq += used;
 		copied += used;
+		if (tp->oodelivery == 1) {
+			printk("Hollywood: copied used\n");
+		}
 		len -= used;
 
 		tcp_rcv_space_adjust(sk);
@@ -1883,6 +1943,9 @@ skip_copy:
 				NET_ADD_STATS_USER(sock_net(sk), LINUX_MIB_TCPDIRECTCOPYFROMPREQUEUE, chunk);
 				len -= chunk;
 				copied += chunk;
+				if (tp->oodelivery == 1) {
+					printk("Hollywood: direct copy from prequeue - 2\n");
+				}
 			}
 		}
 
@@ -1896,6 +1959,15 @@ skip_copy:
 
 	/* Clean up data we have read: This will do ACK frames. */
 	tcp_cleanup_rbuf(sk, copied);
+
+	if (tp->oodelivery == 1) {
+		printk("Hollywood: copied %d bytes\n", copied);
+		// append sequence number
+		if (copied > 0) {
+			memcpy_toiovec(msg->msg_iov, (unsigned char *) &hlywd_seqnum, 4);
+			copied += 4 + cached_offset;
+		}
+	}
 
 	release_sock(sk);
 	return copied;
@@ -2373,6 +2445,27 @@ static int do_tcp_setsockopt(struct sock *sk, int level,
 	lock_sock(sk);
 
 	switch (optname) {
+	case TCP_PRELIABILITY:
+		tp->preliability = val ? 1 : 0;
+		if (tp->preliability) {
+			printk("Hollywood: partial reliability enabled\n");
+		} else {
+			printk("Hollywood: partial reliability disabled\n");
+		}
+		break;
+	case TCP_OODELIVERY:
+		tp->oodelivery = val ? 1 : 0;
+		if (tp->oodelivery) {
+			printk("Hollywood: out-of-order delivery enabled\n");
+		} else {
+			printk("Hollywood: out-of-order delivery disabled\n");
+			while (tp->hlywd_incseg_head != NULL) {
+				struct tcp_hlywd_incseg *next = tp->hlywd_incseg_head->next;
+				kfree(tp->hlywd_incseg_head);
+				tp->hlywd_incseg_head = next;
+			}
+		}
+		break;
 	case TCP_MAXSEG:
 		/* Values greater than interface MTU won't take effect. However
 		 * at the point when this call is done we typically don't yet

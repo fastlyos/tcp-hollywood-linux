@@ -49,6 +49,15 @@ static inline unsigned int tcp_optlen(const struct sk_buff *skb)
 	return (tcp_hdr(skb)->doff - 5) * 4;
 }
 
+/* TCP Hollywood - incoming segment metadata */
+struct tcp_hlywd_incseg {
+	u32	seq;
+	size_t len;
+	size_t offset;
+	void *data; /* copy of segment if out-of-order */
+	struct tcp_hlywd_incseg *next;
+};
+
 /* TCP Fast Open */
 #define TCP_FASTOPEN_COOKIE_MIN	4	/* Min Fast Open Cookie size in bytes */
 #define TCP_FASTOPEN_COOKIE_MAX	16	/* Max Fast Open Cookie size in bytes */
@@ -315,6 +324,13 @@ struct tcp_sock {
 	 * socket. Used to retransmit SYNACKs etc.
 	 */
 	struct request_sock *fastopen_rsk;
+
+/* TCP Hollywood */
+	int oodelivery;
+	struct tcp_hlywd_incseg *hlywd_incseg_head;
+	struct tcp_hlywd_incseg *hlywd_incseg_tail;
+
+	int preliability;
 };
 
 enum tsq_flags {
