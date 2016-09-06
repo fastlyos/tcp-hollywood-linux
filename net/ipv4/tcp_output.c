@@ -41,6 +41,7 @@
 #include <linux/compiler.h>
 #include <linux/gfp.h>
 #include <linux/module.h>
+#include <linux/time.h>
 
 /* People can turn this off for buggy TCP's found in printers etc. */
 int sysctl_tcp_retrans_collapse __read_mostly = 1;
@@ -912,8 +913,126 @@ static int tcp_transmit_skb(struct sock *sk, struct sk_buff *skb, int clone_it,
 
 	inet = inet_sk(sk);
 	tp = tcp_sk(sk);
-	tcb = TCP_SKB_CB(skb);
+	tcb = TCP_SKB_CB(skb);	
 	memset(&opts, 0, sizeof(opts));
+
+	if (tp->preliability && (skb->len-tcp_header_size) > 0) {
+		u32 bytes_from_start = tcb->seq-tp->snd_una;
+		size_t replacement_offset = tcb->seq-tp->snd_una;
+		struct timespec rtt;
+		uint srtt_usec = jiffies_to_usecs(tp->srtt_us >> 3);
+		rtt.tv_sec = srtt_usec / 1000000;
+		rtt.tv_nsec = (srtt_usec % 1000000) * 1000;
+		unsigned int segment_length = skb->len-tcp_header_size;
+		printk("Hollywood (PR): bytes from start: %u\n", bytes_from_start);
+		struct tcp_hlywd_outseg *start_seg = tp->hlywd_outseg_head;
+		while (bytes_from_start > 0 && start_seg != NULL) {
+			if (start_seg->len <= bytes_from_start) {
+				bytes_from_start -= start_seg->len;
+				replacement_offset += start_seg->len;
+				start_seg = start_seg->next;
+			}
+		}
+		if (bytes_from_start == 0 && start_seg->len <= segment_length) {
+			struct timespec current_time;
+			getnstimeofday(&current_time);
+			struct timespec elapsed_time = timespec_sub(current_time, start_seg->queued);
+			struct timespec total_time = timespec_add(elapsed_time, tp->hlywd_playout);
+			total_time = timespec_add(total_time, rtt);
+			printk("Hollywood (PR): sending segment seq %u\n", start_seg->seq);
+			printk("Hollywood (PR): time in queue: %lld.%.9ld\n", (long long) elapsed_time.tv_sec, elapsed_time.tv_nsec);
+			printk("Hollywood (PR): one way delay: %lld.%.9ld\n", (long long) rtt.tv_sec, rtt.tv_nsec);
+			printk("Hollywood (PR): total time estimate: %lld.%.9ld\n", (long long) total_time.tv_sec, total_time.tv_nsec);
+			printk("Hollywood (PR): message lifetime: %lld.%.9ld\n", (long long) start_seg->lifetime.tv_sec, start_seg->lifetime.tv_nsec);
+			if (timespec_compare(&total_time, &start_seg->lifetime) > 0) {
+				struct tcp_hlywd_outseg *replacement_msg = start_seg->next;
+				replacement_offset += start_seg->len;
+				int replacement_found = 0;
+				printk("Hollywood (PR): message expired\n");
+				while (replacement_msg != NULL && !replacement_found) {
+					elapsed_time = timespec_sub(current_time, replacement_msg->queued);
+					total_time = timespec_add(elapsed_time, tp->hlywd_playout);
+					total_time = timespec_add(total_time, rtt);
+					if (timespec_compare(&total_time, &replacement_msg->lifetime) <= 0) {
+						replacement_found = 1;
+						printk("Hollywood (PR): replacement message found!\n");
+					} else {
+						replacement_offset += replacement_msg->len;
+						replacement_msg = replacement_msg->next;
+					}
+				}
+				if (replacement_found) {
+					size_t bytes_to_replacement = replacement_offset;
+					struct sk_buff *replacement_skb = tcp_write_queue_head(sk);
+					while (replacement_skb->len <= bytes_to_replacement) {
+						bytes_to_replacement -= replacement_skb->len;
+						replacement_skb = tcp_write_queue_next(sk, replacement_skb);
+					}
+					/* this can't be good, performance wise */
+					/* skb_zerocopy? */
+					void *replacement_msg_data = (void *) kmalloc(replacement_msg->len, GFP_KERNEL);
+					if (replacement_msg_data) {
+						skb_copy_bits(replacement_skb, bytes_to_replacement, replacement_msg_data, replacement_msg->len);
+						skb_store_bits(skb, 0, replacement_msg_data, replacement_msg->len); 
+					}
+				}
+			}
+			segment_length -= start_seg->len;
+			start_seg = start_seg->next;
+		} else {
+			segment_length -= (start_seg->len-bytes_from_start);
+			start_seg = start_seg->next;
+		}
+		while (segment_length > 0 && start_seg != NULL) {
+			if (start_seg->len <= segment_length) {
+				struct timespec current_time;
+				getnstimeofday(&current_time);
+				struct timespec elapsed_time = timespec_sub(current_time, start_seg->queued);
+				struct timespec total_time = timespec_add(total_time, elapsed_time);
+				total_time = timespec_add(total_time, tp->hlywd_playout);
+				total_time = timespec_add(total_time, rtt);
+				printk("Hollywood (PR): sending segment seq %u\n", start_seg->seq);
+				printk("Hollywood (PR): time in queue: %lld.%.9ld\n", (long long) elapsed_time.tv_sec, elapsed_time.tv_nsec);
+				printk("Hollywood (PR): one way delay: %lld.%.9ld\n", (long long) rtt.tv_sec, rtt.tv_nsec);
+				printk("Hollywood (PR): total time estimate: %lld.%.9ld\n", (long long) total_time.tv_sec, total_time.tv_nsec);
+				printk("Hollywood (PR): message lifetime: %lld.%.9ld\n", (long long) start_seg->lifetime.tv_sec, start_seg->lifetime.tv_nsec);
+				if (timespec_compare(&total_time, &start_seg->lifetime) > 0) {
+					struct tcp_hlywd_outseg *replacement_msg = start_seg->next;
+					int replacement_found = 0;
+					printk("Hollywood (PR): message expired\n");
+					while (replacement_msg != NULL && !replacement_found) {
+						elapsed_time = timespec_sub(current_time, replacement_msg->queued);
+						total_time = timespec_add(elapsed_time, tp->hlywd_playout);
+						total_time = timespec_add(total_time, rtt);
+						if (timespec_compare(&total_time, &replacement_msg->lifetime) <= 0) {
+							replacement_found = 1;
+							printk("Hollywood (PR): replacement message found!\n");
+						} else {
+							replacement_msg = replacement_msg->next;
+						}
+					}
+					if (replacement_found) {
+						size_t bytes_to_replacement = replacement_offset;
+						struct sk_buff *replacement_skb = tcp_write_queue_head(sk);
+						while (replacement_skb->len <= bytes_to_replacement) {
+							bytes_to_replacement -= replacement_skb->len;
+							replacement_skb = tcp_write_queue_next(sk, replacement_skb);
+						}
+						void *replacement_msg_data = (void *) kmalloc(replacement_msg->len, GFP_KERNEL);
+						if (replacement_msg_data) {
+							skb_copy_bits(replacement_skb, bytes_to_replacement, replacement_msg_data, replacement_msg->len);
+							skb_store_bits(skb, (skb->len-tcp_header_size)-segment_length, replacement_msg_data, replacement_msg->len); 
+						}
+					}
+
+				}
+				segment_length -= start_seg->len;
+				start_seg = start_seg->next;
+			} else {
+				break;
+			}
+		}
+	}
 
 	if (unlikely(tcb->tcp_flags & TCPHDR_SYN))
 		tcp_options_size = tcp_syn_options(sk, skb, &opts, &md5);

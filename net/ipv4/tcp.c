@@ -1097,6 +1097,41 @@ int tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 
 	lock_sock(sk);
 
+	if (tp->preliability) {
+		unsigned char __user *hlywd_metadata_usr = msg->msg_iov->iov_base+msg->msg_iov->iov_len-(5 + (2*sizeof(struct timespec)));
+		uint8_t substream_id;
+		copy_from_user((void *) &substream_id, hlywd_metadata_usr, 1);
+		if (substream_id == 2) {
+			struct tcp_hlywd_outseg *hlywd_outseg = (struct tcp_hlywd_outseg *) kmalloc(sizeof(struct tcp_hlywd_outseg), GFP_KERNEL);
+			if (hlywd_outseg) {
+				hlywd_outseg->substream = substream_id;
+				copy_from_user((void *) &hlywd_outseg->substream, hlywd_metadata_usr, 1);
+				copy_from_user((void *) &hlywd_outseg->seq, hlywd_metadata_usr+1, 2);
+				copy_from_user((void *) &hlywd_outseg->depseq, hlywd_metadata_usr+3, 2);
+				copy_from_user((void *) &hlywd_outseg->lifetime, hlywd_metadata_usr+5, sizeof(struct timespec));
+				copy_from_user((void *) &tp->hlywd_playout, hlywd_metadata_usr+(5 + sizeof(struct timespec)), sizeof(struct timespec));
+				hlywd_outseg->len = size - (5 + 2*sizeof(struct timespec));
+				getnstimeofday(&hlywd_outseg->queued);
+				printk("Hollywood (PR) - queueing segment (ss: %u, seq: %u, depseq: %u, lifetime: %lld.%.9lds, len: %zu)\n", hlywd_outseg->substream, hlywd_outseg->seq, 
+									hlywd_outseg->depseq, (long long) hlywd_outseg->lifetime.tv_sec, hlywd_outseg->lifetime.tv_nsec, hlywd_outseg->len);
+				printk("Hollywood (PR) - playout set to %lld.%.9lds\n", (long long) tp->hlywd_playout.tv_sec, tp->hlywd_playout.tv_nsec);
+				hlywd_outseg->next = NULL;
+				hlywd_outseg->packed = 0;
+				if (tp->hlywd_outseg_head == NULL) {
+					tp->hlywd_outseg_head = hlywd_outseg;
+					tp->hlywd_outseg_tail = hlywd_outseg;
+				} else {
+					tp->hlywd_outseg_tail->next = hlywd_outseg;
+					tp->hlywd_incseg_tail = hlywd_outseg;
+				}
+				msg->msg_iov->iov_len -= 5 + (2*sizeof(struct timeval));
+				size -= 5 + (2*sizeof(struct timeval));
+			} else {
+				printk("Hollywood (PR) - kmalloc failed on queue\n");
+			}
+		}
+	}
+
 	flags = msg->msg_flags;
 	if (flags & MSG_FASTOPEN) {
 		err = tcp_sendmsg_fastopen(sk, msg, &copied_syn, size);

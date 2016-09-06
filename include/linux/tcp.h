@@ -58,6 +58,19 @@ struct tcp_hlywd_incseg {
 	struct tcp_hlywd_incseg *next;
 };
 
+/* TCP Hollywood - outgoing segment metadata */
+struct tcp_hlywd_outseg {
+	uint8_t substream;
+	uint16_t seq;
+	uint16_t depseq;
+	struct timespec lifetime;
+	size_t len;
+	struct timespec queued;
+	int packed;
+	struct tcp_hlywd_outseg *next;
+};
+
+
 /* TCP Fast Open */
 #define TCP_FASTOPEN_COOKIE_MIN	4	/* Min Fast Open Cookie size in bytes */
 #define TCP_FASTOPEN_COOKIE_MAX	16	/* Max Fast Open Cookie size in bytes */
@@ -331,6 +344,9 @@ struct tcp_sock {
 	struct tcp_hlywd_incseg *hlywd_incseg_tail;
 
 	int preliability;
+	struct timespec hlywd_playout;
+	struct tcp_hlywd_outseg *hlywd_outseg_head;
+	struct tcp_hlywd_outseg *hlywd_outseg_tail;
 };
 
 enum tsq_flags {
