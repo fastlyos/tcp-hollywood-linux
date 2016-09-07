@@ -934,6 +934,7 @@ static int tcp_transmit_skb(struct sock *sk, struct sk_buff *skb, int clone_it,
 			}
 		}
 		if (bytes_from_start == 0 && start_seg->len <= segment_length) {
+			int dep_replace = 0;
 			struct timespec current_time;
 			getnstimeofday(&current_time);
 			struct timespec elapsed_time = timespec_sub(current_time, start_seg->queued);
@@ -944,7 +945,16 @@ static int tcp_transmit_skb(struct sock *sk, struct sk_buff *skb, int clone_it,
 			printk("Hollywood (PR): one way delay: %lld.%.9ld\n", (long long) rtt.tv_sec, rtt.tv_nsec);
 			printk("Hollywood (PR): total time estimate: %lld.%.9ld\n", (long long) total_time.tv_sec, total_time.tv_nsec);
 			printk("Hollywood (PR): message lifetime: %lld.%.9ld\n", (long long) start_seg->lifetime.tv_sec, start_seg->lifetime.tv_nsec);
-			if (timespec_compare(&total_time, &start_seg->lifetime) > 0) {
+			/* dependency check */
+			struct tcp_hlywd_dep *dep_check = tp->hlywd_dep_q;
+			while (dep_check != NULL && dep_check->depseq > start_seg->seq) {
+				if (dep_check->depseq == start_seg->seq) {
+					dep_replace = 1;
+					break;
+				}
+			}
+			/* */
+			if (timespec_compare(&total_time, &start_seg->lifetime) > 0 || dep_replace) {
 				struct tcp_hlywd_outseg *replacement_msg = start_seg->next;
 				replacement_offset += start_seg->len;
 				int replacement_found = 0;
@@ -973,7 +983,14 @@ static int tcp_transmit_skb(struct sock *sk, struct sk_buff *skb, int clone_it,
 					void *replacement_msg_data = (void *) kmalloc(replacement_msg->len, GFP_KERNEL);
 					if (replacement_msg_data) {
 						skb_copy_bits(replacement_skb, bytes_to_replacement, replacement_msg_data, replacement_msg->len);
-						skb_store_bits(skb, 0, replacement_msg_data, replacement_msg->len); 
+						skb_store_bits(skb, 0, replacement_msg_data, replacement_msg->len);
+						kfree(replacement_msg_data);
+						struct tcp_hlywd_dep *dep_q_entry = (struct tcp_hlywd_dep *) kmalloc(sizeof(struct tcp_hlywd_dep), GFP_KERNEL);
+						if (dep_q_entry) {
+							dep_q_entry->depseq = start_seg->seq;
+							dep_q_entry->next = tp->hlywd_dep_q;
+							tp->hlywd_dep_q = dep_q_entry;
+						}
 					}
 				}
 			}
@@ -985,6 +1002,7 @@ static int tcp_transmit_skb(struct sock *sk, struct sk_buff *skb, int clone_it,
 		}
 		while (segment_length > 0 && start_seg != NULL) {
 			if (start_seg->len <= segment_length) {
+				int dep_replace = 0;
 				struct timespec current_time;
 				getnstimeofday(&current_time);
 				struct timespec elapsed_time = timespec_sub(current_time, start_seg->queued);
@@ -996,7 +1014,16 @@ static int tcp_transmit_skb(struct sock *sk, struct sk_buff *skb, int clone_it,
 				printk("Hollywood (PR): one way delay: %lld.%.9ld\n", (long long) rtt.tv_sec, rtt.tv_nsec);
 				printk("Hollywood (PR): total time estimate: %lld.%.9ld\n", (long long) total_time.tv_sec, total_time.tv_nsec);
 				printk("Hollywood (PR): message lifetime: %lld.%.9ld\n", (long long) start_seg->lifetime.tv_sec, start_seg->lifetime.tv_nsec);
-				if (timespec_compare(&total_time, &start_seg->lifetime) > 0) {
+				/* dependency check */
+				struct tcp_hlywd_dep *dep_check = tp->hlywd_dep_q;
+				while (dep_check != NULL && dep_check->depseq > start_seg->seq) {
+					if (dep_check->depseq == start_seg->seq) {
+						dep_replace = 1;
+						break;
+					}
+				}
+				/* */
+				if (timespec_compare(&total_time, &start_seg->lifetime) > 0 || dep_replace) {
 					struct tcp_hlywd_outseg *replacement_msg = start_seg->next;
 					int replacement_found = 0;
 					printk("Hollywood (PR): message expired\n");
@@ -1021,10 +1048,16 @@ static int tcp_transmit_skb(struct sock *sk, struct sk_buff *skb, int clone_it,
 						void *replacement_msg_data = (void *) kmalloc(replacement_msg->len, GFP_KERNEL);
 						if (replacement_msg_data) {
 							skb_copy_bits(replacement_skb, bytes_to_replacement, replacement_msg_data, replacement_msg->len);
-							skb_store_bits(skb, (skb->len-tcp_header_size)-segment_length, replacement_msg_data, replacement_msg->len); 
+							skb_store_bits(skb, (skb->len-tcp_header_size)-segment_length, replacement_msg_data, replacement_msg->len);
+							kfree(replacement_msg_data);
+							struct tcp_hlywd_dep *dep_q_entry = (struct tcp_hlywd_dep *) kmalloc(sizeof(struct tcp_hlywd_dep), GFP_KERNEL);
+							if (dep_q_entry) {
+								dep_q_entry->depseq = start_seg->seq;
+								dep_q_entry->next = tp->hlywd_dep_q;
+								tp->hlywd_dep_q = dep_q_entry;
+							}
 						}
 					}
-
 				}
 				segment_length -= start_seg->len;
 				start_seg = start_seg->next;

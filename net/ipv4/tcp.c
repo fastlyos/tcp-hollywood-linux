@@ -3142,6 +3142,18 @@ void tcp_done(struct sock *sk)
 
 	sk->sk_shutdown = SHUTDOWN_MASK;
 
+	/* TCP Hollywood */
+	while (tcp_sk(sk)->hlywd_incseg_head != NULL) {
+		struct tcp_hlywd_incseg *next_tmp = tcp_sk(sk)->hlywd_incseg_head->next;
+		kfree(tcp_sk(sk)->hlywd_incseg_head);
+		tcp_sk(sk)->hlywd_incseg_head = next_tmp;
+	}
+	while (tcp_sk(sk)->hlywd_outseg_head != NULL) {
+		struct tcp_hlywd_outseg *next_tmp = tcp_sk(sk)->hlywd_outseg_head->next;
+		kfree(tcp_sk(sk)->hlywd_outseg_head);
+		tcp_sk(sk)->hlywd_outseg_head = next_tmp;
+	}
+
 	if (!sock_flag(sk, SOCK_DEAD))
 		sk->sk_state_change(sk);
 	else

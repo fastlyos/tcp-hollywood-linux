@@ -70,6 +70,11 @@ struct tcp_hlywd_outseg {
 	struct tcp_hlywd_outseg *next;
 };
 
+/* TCP Hollywood - dependency metadata */
+struct tcp_hlywd_dep {
+	uint16_t depseq;
+	struct tcp_hlywd_dep *next;
+};
 
 /* TCP Fast Open */
 #define TCP_FASTOPEN_COOKIE_MIN	4	/* Min Fast Open Cookie size in bytes */
@@ -347,6 +352,7 @@ struct tcp_sock {
 	struct timespec hlywd_playout;
 	struct tcp_hlywd_outseg *hlywd_outseg_head;
 	struct tcp_hlywd_outseg *hlywd_outseg_tail;
+	struct tcp_hlywd_dep	*hlywd_dep_q;
 };
 
 enum tsq_flags {

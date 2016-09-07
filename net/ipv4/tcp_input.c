@@ -3083,6 +3083,11 @@ static int tcp_clean_rtx_queue(struct sock *sk, int prior_fackets,
 				acked_byte_count -= hlywd_head->len;
 				printk("Hollywood (PR): removing message (seq: %u)\n", hlywd_head->seq);
 				kfree(hlywd_head);
+				while (tp->hlywd_dep_q != NULL && tp->hlywd_dep_q->depseq < hlywd_head->seq) {
+					struct tcp_hlywd_dep *next_tmp = tp->hlywd_dep_q->next;
+					kfree(tp->hlywd_dep_q);
+					tp->hlywd_dep_q = next_tmp;
+				}
 			} else {
 				hlywd_head->len -= acked_byte_count;
 				hlywd_head->packed = 1;
