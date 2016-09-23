@@ -4286,15 +4286,15 @@ static void tcp_data_queue_ofo(struct sock *sk, struct sk_buff *skb)
 	inet_csk_schedule_ack(sk);
 
 	if(tp->oodelivery == 1 && (skb->len-tcp_header_len) > 0) {
-		printk("Hollywood: incoming segment (seq: %X, len: %d) -- out-of-order\n", TCP_SKB_CB(skb)->seq,  skb->len-tcp_header_len);
+		printk("Hollywood: incoming segment (seq: %X, len: %d) -- out-of-order\n", TCP_SKB_CB(skb)->seq,  skb->len);
 		struct tcp_hlywd_incseg *hlywd_metadata = (struct tcp_hlywd_incseg *) kmalloc(sizeof(struct tcp_hlywd_incseg), GFP_KERNEL);
 		if (hlywd_metadata) {
-			void *hlywd_oo_data = (void *) kmalloc(skb->len-tcp_header_len, GFP_KERNEL);
+			void *hlywd_oo_data = (void *) kmalloc(skb->len, GFP_KERNEL);
 			if (hlywd_oo_data) {
 				hlywd_metadata->seq = TCP_SKB_CB(skb)->seq;
-				hlywd_metadata->len = skb->len-tcp_header_len;
+				hlywd_metadata->len = skb->len;
 				hlywd_metadata->next = NULL;
-				skb_copy_bits(skb, 0, hlywd_oo_data, skb->len-tcp_header_len);
+				skb_copy_bits(skb, 0, hlywd_oo_data, skb->len);
 				hlywd_metadata->data = hlywd_oo_data;
 				hlywd_metadata->offset = 0;
 				if (tp->hlywd_incseg_head == NULL) {
@@ -4304,6 +4304,7 @@ static void tcp_data_queue_ofo(struct sock *sk, struct sk_buff *skb)
 					tp->hlywd_incseg_tail->next = hlywd_metadata;
 					tp->hlywd_incseg_tail = hlywd_metadata;
 				}
+				sk->sk_data_ready(sk); /* wouldn't happen otherwise - no data added to recv q */
 			} else {
 				printk("Hollywood: kmalloc failed for data copy\n");
 			}

@@ -1708,8 +1708,9 @@ int tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 			if (hlywd_incseg_set == 0 && tp->oodelivery == 1) {
 				printk("Hollywood: tcp_recvmsg (len: %d)\n", len);
 				if (tp->hlywd_incseg_head != NULL) {
-					printk("Hollywood: head segment length is %d, len is %d ..\n", tp->hlywd_incseg_head->len, len);
+					printk("Hollywood: head segment length is %d, len is %d .., seq num is %X\n", tp->hlywd_incseg_head->len, len, tp->hlywd_incseg_head->seq);
 					void *hlywd_seg_data = NULL;
+					int hlywd_seg_data_all = 0;
 					if (tp->hlywd_incseg_head->len > len-4) {
 						/* want to copy more than possible .. */
 						tp->hlywd_incseg_head->offset += len-4;
@@ -1723,14 +1724,19 @@ int tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 						hlywd_seg_data = tp->hlywd_incseg_head->data;
 						struct tcp_hlywd_incseg *head = tp->hlywd_incseg_head;
 						tp->hlywd_incseg_head = head->next;
+						hlywd_seg_data_all = 1;
 						kfree(head);
 					}
 					hlywd_incseg_set = 1;
 					if (hlywd_seg_data != NULL) {
 						/* out of order segment */
-						printk("Hollywood: copying out-of-order segment");
+						printk("Hollywood: copying out-of-order segment\n");
 						memcpy_toiovec(msg->msg_iov, (unsigned char *) hlywd_seg_data, len);
 						memcpy_toiovec(msg->msg_iov, (unsigned char *) &hlywd_seqnum, 4);
+						if (hlywd_seg_data_all == 1) {
+							kfree(hlywd_seg_data);
+						}
+						release_sock(sk);
 						return len+4;
 					}
 				} else {
