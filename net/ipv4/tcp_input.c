@@ -4428,7 +4428,9 @@ static int __must_check tcp_queue_rcv(struct sock *sk, struct sk_buff *skb, int 
 	struct sk_buff *tail = skb_peek_tail(&sk->sk_receive_queue);
 	struct tcp_sock *tp = tcp_sk(sk);
 
-	if(tp->oodelivery == 1 && (skb->len-hdrlen) > 0) {
+	printk("received a TCP segment, length is %d...\n", skb->len-hdrlen);
+
+	if(tp->oodelivery > 0 && (skb->len-hdrlen) > 0) {
 		printk("Hollywood: queueing skb with length %d..\n", skb->len-hdrlen);
 		struct tcp_hlywd_incseg *hlywd_metadata = (struct tcp_hlywd_incseg *) kmalloc(sizeof(struct tcp_hlywd_incseg), GFP_KERNEL);
 		if (hlywd_metadata) {
