@@ -419,6 +419,7 @@ void tcp_init_sock(struct sock *sk)
 	sk->sk_rcvbuf = sysctl_tcp_rmem[1];
 
 	tp->oodelivery = 2;
+	tp->hlywd_oo_count = 0;
 
 	local_bh_disable();
 	sock_update_memcg(sk);
@@ -1112,9 +1113,9 @@ int tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 				copy_from_user((void *) &tp->hlywd_playout, hlywd_metadata_usr+(5 + sizeof(struct timespec)), sizeof(struct timespec));
 				hlywd_outseg->len = size - (5 + 2*sizeof(struct timespec));
 				getnstimeofday(&hlywd_outseg->queued);
-				printk("Hollywood (PR) - queueing segment (ss: %u, seq: %u, depseq: %u, lifetime: %lld.%.9lds, len: %zu)\n", hlywd_outseg->substream, hlywd_outseg->seq, 
-									hlywd_outseg->depseq, (long long) hlywd_outseg->lifetime.tv_sec, hlywd_outseg->lifetime.tv_nsec, hlywd_outseg->len);
-				printk("Hollywood (PR) - playout set to %lld.%.9lds\n", (long long) tp->hlywd_playout.tv_sec, tp->hlywd_playout.tv_nsec);
+				//printk("Hollywood (PR) - queueing segment (ss: %u, seq: %u, depseq: %u, lifetime: %lld.%.9lds, len: %zu)\n", hlywd_outseg->substream, hlywd_outseg->seq, 
+									//hlywd_outseg->depseq, (long long) hlywd_outseg->lifetime.tv_sec, hlywd_outseg->lifetime.tv_nsec, hlywd_outseg->len);
+				//printk("Hollywood (PR) - playout set to %lld.%.9lds\n", (long long) tp->hlywd_playout.tv_sec, tp->hlywd_playout.tv_nsec);
 				hlywd_outseg->next = NULL;
 				hlywd_outseg->packed = 0;
 				if (tp->hlywd_outseg_head == NULL) {
@@ -1127,7 +1128,7 @@ int tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 				msg->msg_iov->iov_len -= 5 + (2*sizeof(struct timeval));
 				size -= 5 + (2*sizeof(struct timeval));
 			} else {
-				printk("Hollywood (PR) - kmalloc failed on queue\n");
+				//printk("Hollywood (PR) - kmalloc failed on queue\n");
 			}
 		}
 	}
@@ -1653,6 +1654,10 @@ int tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 		}
 	}
 
+	if (tp->oodelivery == 1) {
+		printk("Hollywood: recvmsg called!\n");
+	}
+
 	err = -ENOTCONN;
 	if (sk->sk_state == TCP_LISTEN)
 		goto out;
@@ -1686,31 +1691,6 @@ int tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 
 	target = sock_rcvlowat(sk, flags & MSG_WAITALL, len);
 
-	if (tp->oodelivery == 1) {
-		if (tp->hlywd_incseg_head != NULL && tp->hlywd_incseg_head->data != NULL) {
-			/* segment at head of list is out-of-order - can process here */
-			printk("Hollywood: tcp_recvmsg (len: %lu)\n", len);
-			len = (len-4 > (tp->hlywd_incseg_head->len-tp->hlywd_incseg_head->offset)) ? (tp->hlywd_incseg_head->len-tp->hlywd_incseg_head->offset) : len-4;
-			u32 hlywd_seq = tp->hlywd_incseg_head->seq+tp->hlywd_incseg_head->offset;
-			printk("Hollywood: copying out-of-order segment\n");
-			printk("setting hlywd_seqnum to %X\n", hlywd_seq);
-			memcpy_toiovec(msg->msg_iov, (unsigned char *) tp->hlywd_incseg_head->data+tp->hlywd_incseg_head->offset, len);
-			memcpy_toiovec(msg->msg_iov, (unsigned char *) &hlywd_seq, 4);
-			if (len == (tp->hlywd_incseg_head->len-tp->hlywd_incseg_head->offset)) {
-				/* consumed whole segment */
-				kfree(tp->hlywd_incseg_head->data);
-				struct tcp_hlywd_incseg *head = tp->hlywd_incseg_head;
-				tp->hlywd_incseg_head = head->next;
-				kfree(head);
-			} else {
-				/* didn't consume whole segment */
-				tp->hlywd_incseg_head->offset = tp->hlywd_incseg_head->offset + len;
-			}
-			release_sock(sk);
-			return len+4;
-		}
-	}
-
 	do {
 		u32 offset;
 
@@ -1721,6 +1701,34 @@ int tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 			if (signal_pending(current)) {
 				copied = timeo ? sock_intr_errno(timeo) : -EAGAIN;
 				break;
+			}
+		}
+
+		if (tp->oodelivery == 1) {
+			if (tp->hlywd_incseg_head != NULL && tp->hlywd_incseg_head->data != NULL) {
+				/* segment at head of list is out-of-order - can process here */
+				printk("Hollywood: OUT OF ORDER (1) tcp_recvmsg (len: %lu)\n", len);
+				len = (len-4 > (tp->hlywd_incseg_head->len-tp->hlywd_incseg_head->offset)) ? (tp->hlywd_incseg_head->len-tp->hlywd_incseg_head->offset) : len-4;
+				u32 hlywd_seq = tp->hlywd_incseg_head->seq+tp->hlywd_incseg_head->offset;
+				//printk("Hollywood: copying out-of-order segment\n");
+				//printk("setting hlywd_seqnum to %X\n", hlywd_seq);
+				memcpy_toiovec(msg->msg_iov, (unsigned char *) tp->hlywd_incseg_head->data+tp->hlywd_incseg_head->offset, len);
+				memcpy_toiovec(msg->msg_iov, (unsigned char *) &hlywd_seq, 4);
+				if (len == (tp->hlywd_incseg_head->len-tp->hlywd_incseg_head->offset)) {
+					/* consumed whole segment */
+					kfree(tp->hlywd_incseg_head->data);
+					struct tcp_hlywd_incseg *head = tp->hlywd_incseg_head;
+					tp->hlywd_incseg_head = head->next;
+					kfree(head);
+					tp->hlywd_oo_count--;
+				} else {
+					/* didn't consume whole segment */
+					tp->hlywd_incseg_head->offset = tp->hlywd_incseg_head->offset + len;
+				}
+				printk("Hollywood: OUT OF ORDER (1) processed\n");
+				printk("Hollywood: recvmsg - sequence number copied is %X\n", hlywd_seq); 
+				release_sock(sk);
+				return len+4;
 			}
 		}
 
@@ -1737,13 +1745,13 @@ int tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 				break;
 
 			if (tp->oodelivery == 1 && current_hlywd_segment == NULL && tp->hlywd_incseg_head != NULL) {
-				printk("Hollywood: tcp_recvmsg (len: %lu)\n", len);
+				//printk("Hollywood: tcp_recvmsg (len: %lu)\n", len);
 				len = (len-4 > (tp->hlywd_incseg_head->len-tp->hlywd_incseg_head->offset)) ? (tp->hlywd_incseg_head->len-tp->hlywd_incseg_head->offset) : len-4;
 				if (tp->hlywd_incseg_head->data != NULL) {
 					/* segment at head of list is out-of-order - can process here */
 					u32 hlywd_seq = tp->hlywd_incseg_head->seq+tp->hlywd_incseg_head->offset;
-					printk("Hollywood: copying out-of-order segment\n");
-					printk("setting hlywd_seqnum to %X\n", hlywd_seq);
+					printk("Hollywood: OUT-OF-ORDER (2) copying out-of-order segment\n");
+					//printk("setting hlywd_seqnum to %X\n", hlywd_seq);
 					memcpy_toiovec(msg->msg_iov, (unsigned char *) tp->hlywd_incseg_head->data+tp->hlywd_incseg_head->offset, len);
 					memcpy_toiovec(msg->msg_iov, (unsigned char *) &hlywd_seq, 4);
 					if (len == (tp->hlywd_incseg_head->len-tp->hlywd_incseg_head->offset)) {
@@ -1752,14 +1760,17 @@ int tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 						struct tcp_hlywd_incseg *head = tp->hlywd_incseg_head;
 						tp->hlywd_incseg_head = head->next;
 						kfree(head);
+						tp->hlywd_oo_count--;
 					} else {
 						/* didn't consume whole segment */
 						tp->hlywd_incseg_head->offset = tp->hlywd_incseg_head->offset + len;
 					}
+					printk("Hollywood: OUT-OF-ORDER (2) processed!\n");
+					printk("Hollywood: recvmsg - sequence number copied is %X\n", hlywd_seq); 
 					release_sock(sk);
 					return len+4;
 				} else {
-					printk("len is set to %lu.., current_hlywd_segment set to head\n", len);
+					//printk("len is set to %lu.., current_hlywd_segment set to head\n", len);
 					current_hlywd_segment = tp->hlywd_incseg_head;
 				}
 			}
@@ -1779,7 +1790,7 @@ int tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 		/* Well, if we have backlog, try to process it now yet. */
 
 		if (copied >= target && !sk->sk_backlog.tail) {
-			printk("break here - 1\n");
+			//printk("break here - 1\n");
 			break;
 		}
 
@@ -1789,23 +1800,23 @@ int tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 			    (sk->sk_shutdown & RCV_SHUTDOWN) ||
 			    !timeo ||
 			    signal_pending(current)) {
-				printk("break here - 2\n");
+				//printk("break here - 2\n");
 				break;
 			}
 		} else {
 			if (sock_flag(sk, SOCK_DONE)) {
-				printk("break here - 3\n");
+				//printk("break here - 3\n");
 				break;
 			}
 
 			if (sk->sk_err) {
 				copied = sock_error(sk);
-				printk("break here - 4\n");
+				//printk("break here - 4\n");
 				break;
 			}
 
 			if (sk->sk_shutdown & RCV_SHUTDOWN) {
-				printk("break here - 5\n");
+				//printk("break here - 5\n");
 				break;
 			}
 
@@ -1815,7 +1826,7 @@ int tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 					 * from never connected socket.
 					 */
 					copied = -ENOTCONN;
-					printk("break here - 6\n");
+					//printk("break here - 6\n");
 					break;
 				}
 				break;
@@ -1823,13 +1834,13 @@ int tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 
 			if (!timeo) {
 				copied = -EAGAIN;
-				printk("break here - 7\n");
+				//printk("break here - 7\n");
 				break;
 			}
 
 			if (signal_pending(current)) {
 				copied = sock_intr_errno(timeo);
-				printk("break here - 8\n");
+				//printk("break here - 8\n");
 				break;
 			}
 		}
@@ -1888,6 +1899,10 @@ int tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 		} else
 			sk_wait_data(sk, &timeo);
 
+		if (tp->oodelivery == 1) {
+			printk("Hollywood: awake!\n");
+		}
+
 		if (user_recv) {
 			int chunk;
 
@@ -1898,7 +1913,7 @@ int tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 				len -= chunk;
 				copied += chunk;
 				if (tp->oodelivery == 1) {
-					printk("Hollywood: copied - direct copy from backlog\n", len);
+					//printk("Hollywood: copied - direct copy from backlog\n", len);
 				}
 			}
 
@@ -1912,7 +1927,7 @@ do_prequeue:
 					len -= chunk;
 					copied += chunk;
 					if (tp->oodelivery == 1) {
-						printk("Hollywood: copied - direct copy from prequeue\n", len);
+						//printk("Hollywood: copied - direct copy from prequeue\n", len);
 					}
 				}
 			}
@@ -1957,7 +1972,7 @@ do_prequeue:
 				/* Exception. Bailout! */
 				if (!copied)
 					copied = -EFAULT;
-				printk("break here - 99\n");
+				//printk("break here - 99\n");
 				break;
 			}
 		}
@@ -1965,7 +1980,7 @@ do_prequeue:
 		*seq += used;
 		copied += used;
 		if (tp->oodelivery == 1) {
-			printk("Hollywood: copied used\n");
+			//printk("Hollywood: copied used\n");
 		}
 		len -= used;
 
@@ -1990,7 +2005,7 @@ skip_copy:
 		++*seq;
 		if (!(flags & MSG_PEEK))
 			sk_eat_skb(sk, skb);
-		printk("break here - boop\n");
+		//printk("break here - boop\n");
 		break;
 	} while (len > 0);
 
@@ -2007,7 +2022,7 @@ skip_copy:
 				len -= chunk;
 				copied += chunk;
 				if (tp->oodelivery == 1) {
-					printk("Hollywood: direct copy from prequeue - 2\n");
+					//printk("Hollywood: direct copy from prequeue - 2\n");
 				}
 			}
 		}
@@ -2024,23 +2039,23 @@ skip_copy:
 	tcp_cleanup_rbuf(sk, copied);
 
 	if (tp->oodelivery == 1 && tp->hlywd_incseg_head != NULL) {
-		printk("Hollywood: copied %d bytes\n", copied);
+		//printk("Hollywood: copied %d bytes\n", copied);
 		u32 hlywd_seqnum = tp->hlywd_incseg_head->seq+tp->hlywd_incseg_head->offset;
 		/* process hollywood segment! */
 		if (copied == (current_hlywd_segment->len-current_hlywd_segment->offset)) {
 			/* consumed whole segment */
-			printk("Hollywood: whole segmenst consumed!\n");
+			//printk("Hollywood: whole segmenst consumed!\n");
 			struct tcp_hlywd_incseg *head = tp->hlywd_incseg_head;
 			tp->hlywd_incseg_head = head->next;
 			kfree(head);
 		} else {
 			/* didn't consume whole segment */
-			printk("Hollywood: whole segment not consumed :(\n");
+			//printk("Hollywood: whole segment not consumed :(\n");
 			tp->hlywd_incseg_head->offset = tp->hlywd_incseg_head->offset + copied;
 		}
 		// append sequence number
 		if (copied > 0) {
-			printk("Hollywood: sequence number copied is %X\n", hlywd_seqnum); 
+			printk("Hollywood: recvmsg - sequence number copied is %X\n", hlywd_seqnum); 
 			memcpy_toiovec(msg->msg_iov, (unsigned char *) &hlywd_seqnum, 4);
 			copied += 4;
 		}
@@ -2525,17 +2540,17 @@ static int do_tcp_setsockopt(struct sock *sk, int level,
 	case TCP_PRELIABILITY:
 		tp->preliability = val ? 1 : 0;
 		if (tp->preliability) {
-			printk("Hollywood: partial reliability enabled\n");
+			//printk("Hollywood: partial reliability enabled\n");
 		} else {
-			printk("Hollywood: partial reliability disabled\n");
+			//printk("Hollywood: partial reliability disabled\n");
 		}
 		break;
 	case TCP_OODELIVERY:
 		tp->oodelivery = val ? 1 : 0;
 		if (tp->oodelivery) {
-			printk("Hollywood: out-of-order delivery enabled\n");
+			//printk("Hollywood: out-of-order delivery enabled\n");
 		} else {
-			printk("Hollywood: out-of-order delivery disabled\n");
+			//printk("Hollywood: out-of-order delivery disabled\n");
 			while (tp->hlywd_incseg_head != NULL) {
 				struct tcp_hlywd_incseg *next = tp->hlywd_incseg_head->next;
 				kfree(tp->hlywd_incseg_head);

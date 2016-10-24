@@ -347,7 +347,8 @@ struct tcp_sock {
 	int oodelivery;
 	struct tcp_hlywd_incseg *hlywd_incseg_head;
 	struct tcp_hlywd_incseg *hlywd_incseg_tail;
-
+    int hlywd_oo_count;
+    
 	int preliability;
 	struct timespec hlywd_playout;
 	struct tcp_hlywd_outseg *hlywd_outseg_head;

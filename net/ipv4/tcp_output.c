@@ -924,7 +924,7 @@ static int tcp_transmit_skb(struct sock *sk, struct sk_buff *skb, int clone_it,
 		rtt.tv_sec = srtt_usec / 1000000;
 		rtt.tv_nsec = (srtt_usec % 1000000) * 1000;
 		unsigned int segment_length = skb->len-tcp_header_size;
-		printk("Hollywood (PR): bytes from start: %u\n", bytes_from_start);
+		//printk("Hollywood (PR): bytes from start: %u\n", bytes_from_start);
 		struct tcp_hlywd_outseg *start_seg = tp->hlywd_outseg_head;
 		while (bytes_from_start > 0 && start_seg != NULL) {
 			if (start_seg->len <= bytes_from_start) {
@@ -940,11 +940,11 @@ static int tcp_transmit_skb(struct sock *sk, struct sk_buff *skb, int clone_it,
 			struct timespec elapsed_time = timespec_sub(current_time, start_seg->queued);
 			struct timespec total_time = timespec_add(elapsed_time, tp->hlywd_playout);
 			total_time = timespec_add(total_time, rtt);
-			printk("Hollywood (PR): sending segment seq %u\n", start_seg->seq);
-			printk("Hollywood (PR): time in queue: %lld.%.9ld\n", (long long) elapsed_time.tv_sec, elapsed_time.tv_nsec);
-			printk("Hollywood (PR): one way delay: %lld.%.9ld\n", (long long) rtt.tv_sec, rtt.tv_nsec);
-			printk("Hollywood (PR): total time estimate: %lld.%.9ld\n", (long long) total_time.tv_sec, total_time.tv_nsec);
-			printk("Hollywood (PR): message lifetime: %lld.%.9ld\n", (long long) start_seg->lifetime.tv_sec, start_seg->lifetime.tv_nsec);
+			//printk("Hollywood (PR): sending segment seq %u\n", start_seg->seq);
+			//printk("Hollywood (PR): time in queue: %lld.%.9ld\n", (long long) elapsed_time.tv_sec, elapsed_time.tv_nsec);
+			//printk("Hollywood (PR): one way delay: %lld.%.9ld\n", (long long) rtt.tv_sec, rtt.tv_nsec);
+			//printk("Hollywood (PR): total time estimate: %lld.%.9ld\n", (long long) total_time.tv_sec, total_time.tv_nsec);
+			//printk("Hollywood (PR): message lifetime: %lld.%.9ld\n", (long long) start_seg->lifetime.tv_sec, start_seg->lifetime.tv_nsec);
 			/* dependency check */
 			struct tcp_hlywd_dep *dep_check = tp->hlywd_dep_q;
 			while (dep_check != NULL && dep_check->depseq > start_seg->seq) {
@@ -958,14 +958,14 @@ static int tcp_transmit_skb(struct sock *sk, struct sk_buff *skb, int clone_it,
 				struct tcp_hlywd_outseg *replacement_msg = start_seg->next;
 				replacement_offset += start_seg->len;
 				int replacement_found = 0;
-				printk("Hollywood (PR): message expired\n");
+				//printk("Hollywood (PR): message expired\n");
 				while (replacement_msg != NULL && !replacement_found) {
 					elapsed_time = timespec_sub(current_time, replacement_msg->queued);
 					total_time = timespec_add(elapsed_time, tp->hlywd_playout);
 					total_time = timespec_add(total_time, rtt);
 					if (timespec_compare(&total_time, &replacement_msg->lifetime) <= 0) {
 						replacement_found = 1;
-						printk("Hollywood (PR): replacement message found!\n");
+						//printk("Hollywood (PR): replacement message found!\n");
 					} else {
 						replacement_offset += replacement_msg->len;
 						replacement_msg = replacement_msg->next;
@@ -1009,11 +1009,11 @@ static int tcp_transmit_skb(struct sock *sk, struct sk_buff *skb, int clone_it,
 				struct timespec total_time = timespec_add(total_time, elapsed_time);
 				total_time = timespec_add(total_time, tp->hlywd_playout);
 				total_time = timespec_add(total_time, rtt);
-				printk("Hollywood (PR): sending segment seq %u\n", start_seg->seq);
-				printk("Hollywood (PR): time in queue: %lld.%.9ld\n", (long long) elapsed_time.tv_sec, elapsed_time.tv_nsec);
-				printk("Hollywood (PR): one way delay: %lld.%.9ld\n", (long long) rtt.tv_sec, rtt.tv_nsec);
-				printk("Hollywood (PR): total time estimate: %lld.%.9ld\n", (long long) total_time.tv_sec, total_time.tv_nsec);
-				printk("Hollywood (PR): message lifetime: %lld.%.9ld\n", (long long) start_seg->lifetime.tv_sec, start_seg->lifetime.tv_nsec);
+				//printk("Hollywood (PR): sending segment seq %u\n", start_seg->seq);
+				//printk("Hollywood (PR): time in queue: %lld.%.9ld\n", (long long) elapsed_time.tv_sec, elapsed_time.tv_nsec);
+				//printk("Hollywood (PR): one way delay: %lld.%.9ld\n", (long long) rtt.tv_sec, rtt.tv_nsec);
+				//printk("Hollywood (PR): total time estimate: %lld.%.9ld\n", (long long) total_time.tv_sec, total_time.tv_nsec);
+				//printk("Hollywood (PR): message lifetime: %lld.%.9ld\n", (long long) start_seg->lifetime.tv_sec, start_seg->lifetime.tv_nsec);
 				/* dependency check */
 				struct tcp_hlywd_dep *dep_check = tp->hlywd_dep_q;
 				while (dep_check != NULL && dep_check->depseq > start_seg->seq) {
@@ -1026,14 +1026,14 @@ static int tcp_transmit_skb(struct sock *sk, struct sk_buff *skb, int clone_it,
 				if (timespec_compare(&total_time, &start_seg->lifetime) > 0 || dep_replace) {
 					struct tcp_hlywd_outseg *replacement_msg = start_seg->next;
 					int replacement_found = 0;
-					printk("Hollywood (PR): message expired\n");
+					//printk("Hollywood (PR): message expired\n");
 					while (replacement_msg != NULL && !replacement_found) {
 						elapsed_time = timespec_sub(current_time, replacement_msg->queued);
 						total_time = timespec_add(elapsed_time, tp->hlywd_playout);
 						total_time = timespec_add(total_time, rtt);
 						if (timespec_compare(&total_time, &replacement_msg->lifetime) <= 0) {
 							replacement_found = 1;
-							printk("Hollywood (PR): replacement message found!\n");
+							//printk("Hollywood (PR): replacement message found!\n");
 						} else {
 							replacement_msg = replacement_msg->next;
 						}

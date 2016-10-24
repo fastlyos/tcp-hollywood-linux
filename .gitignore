@@ -1,0 +1,11 @@
+*.o
+*.o.cmd
+*.mod.c
+*.ko.cmd
+*.ko
+*.cmd
+*.order
+*.builtin
+*.so
+*.so.dbg
+.tmp-versions/*
