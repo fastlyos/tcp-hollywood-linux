@@ -1431,8 +1431,6 @@ int tcp_v4_do_rcv(struct sock *sk, struct sk_buff *skb)
 {
 	struct sock *rsk;
 	
-	printk("B Segment received - sequence number %X\n", TCP_SKB_CB(skb)->seq);
-
 	if (sk->sk_state == TCP_ESTABLISHED) { /* Fast path */
 		struct dst_entry *dst = sk->sk_rx_dst;
 
@@ -1444,12 +1442,9 @@ int tcp_v4_do_rcv(struct sock *sk, struct sk_buff *skb)
 				sk->sk_rx_dst = NULL;
 			}
 		}
-		printk("C Segment received - sequence number %X\n", TCP_SKB_CB(skb)->seq);
 		tcp_rcv_established(sk, skb, tcp_hdr(skb), skb->len);
 		return 0;
 	}
-
-	printk("D Segment received - sequence number %X\n", TCP_SKB_CB(skb)->seq);
 
 	if (skb->len < tcp_hdrlen(skb) || tcp_checksum_complete(skb))
 		goto csum_err;
@@ -1542,7 +1537,10 @@ bool tcp_prequeue(struct sock *sk, struct sk_buff *skb)
 {
 	struct tcp_sock *tp = tcp_sk(sk);
 
-	printk("X Segment received - sequence number %X\n", TCP_SKB_CB(skb)->seq);
+	// Hollywood doesn't check the prequeue
+	if (tp->oodelivery == 1) {
+		return false;
+	}
 
 	if (sysctl_tcp_low_latency || !tp->ucopy.task)
 		return false;
@@ -1641,8 +1639,6 @@ int tcp_v4_rcv(struct sk_buff *skb)
 	TCP_SKB_CB(skb)->tcp_tw_isn = 0;
 	TCP_SKB_CB(skb)->ip_dsfield = ipv4_get_dsfield(iph);
 	TCP_SKB_CB(skb)->sacked	 = 0;
-
-	printk("Segment received - sequence number %X\n", TCP_SKB_CB(skb)->seq);
 
 	sk = __inet_lookup_skb(&tcp_hashinfo, skb, th->source, th->dest);
 	if (!sk)

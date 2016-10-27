@@ -4214,7 +4214,7 @@ static void tcp_ofo_queue(struct sock *sk)
 			if (hlywd_metadata) {
 				hlywd_metadata->seq = TCP_SKB_CB(skb)->seq;
 				hlywd_metadata->len = skb->len;
-				printk("Hollywood: incoming segment (seq: %X, len: %d) -- ofo->recv\n", hlywd_metadata->seq, hlywd_metadata->len);
+				//printk("Hollywood: incoming segment (seq: %X, len: %d) -- ofo->recv\n", hlywd_metadata->seq, hlywd_metadata->len);
 				// add to tail of metadata queue
 				hlywd_metadata->next = NULL;
 				hlywd_metadata->data = NULL;
@@ -4286,7 +4286,7 @@ static void tcp_data_queue_ofo(struct sock *sk, struct sk_buff *skb)
 	inet_csk_schedule_ack(sk);
 
 	if(tp->oodelivery == 1 && (skb->len-tcp_header_len) > 0) {
-		printk("Hollywood: incoming segment (seq: %X, len: %d) -- out-of-order\n", TCP_SKB_CB(skb)->seq,  skb->len);
+		//printk("Hollywood: incoming segment (seq: %X, len: %d) -- out-of-order\n", TCP_SKB_CB(skb)->seq,  skb->len);
 		struct timeval t1, t2;
 		do_gettimeofday(&t1);
 		struct tcp_hlywd_incseg *hlywd_metadata = (struct tcp_hlywd_incseg *) kmalloc(sizeof(struct tcp_hlywd_incseg), GFP_KERNEL);
@@ -4316,7 +4316,7 @@ static void tcp_data_queue_ofo(struct sock *sk, struct sk_buff *skb)
 		}
 		do_gettimeofday(&t2);
 		long elapsed = (t2.tv_sec-t1.tv_sec)*1000000 + t2.tv_usec-t1.tv_usec;
-		printk("Hollywood: out-of-order elapsed: %ld..\n", elapsed);
+		//printk("Hollywood: out-of-order elapsed: %ld..\n", elapsed);
 	}
 
 	NET_INC_STATS_BH(sock_net(sk), LINUX_MIB_TCPOFOQUEUE);
@@ -4442,7 +4442,7 @@ static int __must_check tcp_queue_rcv(struct sock *sk, struct sk_buff *skb, int 
 		if (hlywd_metadata) {
 			hlywd_metadata->seq = TCP_SKB_CB(skb)->seq;
 			hlywd_metadata->len = skb->len-hdrlen;
-			printk("Hollywood: incoming segment (seq: %X, len: %d) -- queued\n", hlywd_metadata->seq, hlywd_metadata->len);
+			//printk("Hollywood: incoming segment (seq: %X, len: %d) -- queued\n", hlywd_metadata->seq, hlywd_metadata->len);
 			// add to tail of metadata queue
 			hlywd_metadata->next = NULL;
 			hlywd_metadata->data = NULL;
@@ -4525,6 +4525,10 @@ static void tcp_data_queue(struct sock *sk, struct sk_buff *skb)
 	struct tcp_sock *tp = tcp_sk(sk);
 	int eaten = -1;
 	bool fragstolen = false;
+
+	if (tp->oodelivery == 1) {
+		//printk("YY Segment received - sequence number %X\n", TCP_SKB_CB(skb)->seq);
+	}
 
 	if (TCP_SKB_CB(skb)->seq == TCP_SKB_CB(skb)->end_seq)
 		goto drop;
@@ -5211,7 +5215,7 @@ void tcp_rcv_established(struct sock *sk, struct sk_buff *skb,
 	struct tcp_sock *tp = tcp_sk(sk);
 
 	if (tp->oodelivery == 1) {
-		printk("Hollywood: segment received - seq: %X\n", TCP_SKB_CB(skb)->seq);
+		//printk("Hollywood: segment received - seq: %X\n", TCP_SKB_CB(skb)->seq);
 	}
 
 	if (unlikely(sk->sk_rx_dst == NULL))
