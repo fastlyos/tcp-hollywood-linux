@@ -2922,6 +2922,12 @@ static int do_tcp_getsockopt(struct sock *sk, int level,
 	case TCP_NODELAY:
 		val = !!(tp->nonagle&TCP_NAGLE_OFF);
 		break;
+	case TCP_HLYWD_RTT:
+		val = jiffies_to_usecs(tp->srtt_us >> 3);
+		break;
+	case TCP_HLYWD_PMTU:
+		val = tp->mtu_info;
+		break;
 	case TCP_CORK:
 		val = !!(tp->nonagle&TCP_NAGLE_CORK);
 		break;

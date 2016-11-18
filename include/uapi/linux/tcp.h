@@ -115,6 +115,8 @@ enum {
 #define TCP_OODELIVERY		27	/* enable out-of-order delivery of incoming segs */
 #define TCP_PRELIABILITY	28	/* enable partial reliability */
 #define TCP_HLYWD_PLAYOUT	29	/* set play-out delay for Hollywood */
+#define TCP_HLYWD_RTT       30
+#define TCP_HLYWD_PMTU      31
 
 struct tcp_repair_opt {
 	__u32	opt_code;
