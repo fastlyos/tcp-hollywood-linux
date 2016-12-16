@@ -3071,7 +3071,7 @@ static int tcp_clean_rtx_queue(struct sock *sk, int prior_fackets,
 
 	if (tp->preliability) {
 		u32 acked_byte_count = tp->snd_una-prior_snd_una;
-		//printk("Hollywood (PR): acked byte count: %u\n", acked_byte_count);
+		printk("Hollywood (PR): acked byte count: %u\n", acked_byte_count);
 		while (acked_byte_count > 0) {
 			struct tcp_hlywd_outseg *hlywd_head = tp->hlywd_outseg_head;
 			if (hlywd_head == NULL) {
@@ -3081,7 +3081,7 @@ static int tcp_clean_rtx_queue(struct sock *sk, int prior_fackets,
 				// entire segment can go
 				tp->hlywd_outseg_head = hlywd_head->next;
 				acked_byte_count -= hlywd_head->len;
-				//printk("Hollywood (PR): removing message (seq: %u)\n", hlywd_head->seq);
+				printk("Hollywood (PR): removing message (seq: %u)\n", hlywd_head->seq);
 				kfree(hlywd_head);
 				while (tp->hlywd_dep_q != NULL && tp->hlywd_dep_q->depseq < hlywd_head->seq) {
 					struct tcp_hlywd_dep *next_tmp = tp->hlywd_dep_q->next;
@@ -3092,7 +3092,7 @@ static int tcp_clean_rtx_queue(struct sock *sk, int prior_fackets,
 				hlywd_head->len -= acked_byte_count;
 				hlywd_head->packed = 1;
 				acked_byte_count -= hlywd_head->len;
-				//printk("Hollywood (PR): partially acking message (seq: %u)\n", hlywd_head->seq);
+				printk("Hollywood (PR): partially acking message (seq: %u)\n", hlywd_head->seq);
 			}
 		}
 	}
