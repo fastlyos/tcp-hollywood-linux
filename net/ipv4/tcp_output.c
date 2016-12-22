@@ -956,7 +956,7 @@ static int tcp_transmit_skb(struct sock *sk, struct sk_buff *skb, int clone_it,
 				printk("Hollywood (PR): .... play-out delay: %lld.%.9ld\n", (long long) tp->hlywd_playout.tv_sec, tp->hlywd_playout.tv_nsec);
 				printk("Hollywood (PR): .... total time estimate: %lld.%.9ld\n", (long long) total_time.tv_sec, total_time.tv_nsec);
 				printk("Hollywood (PR): .... message lifetime: %lld.%.9ld\n", (long long) start_seg->lifetime.tv_sec, start_seg->lifetime.tv_nsec);
-				if (timespec_compare(&total_time, &start_seg->lifetime) > 0) {
+				if (start_seg->hasReplaced == 1 || (timespec_compare(&total_time, &start_seg->lifetime) > 0)) {
 					printk("Hollywood (PR): **** message expired!!\n");
 					struct tcp_hlywd_outseg *replacement_seg = start_seg->next;
 					replacement_offset += start_seg->len;
@@ -991,6 +991,7 @@ static int tcp_transmit_skb(struct sock *sk, struct sk_buff *skb, int clone_it,
 						if (replacement_msg_data) {
 							skb_copy_bits(replacement_skb, bytes_to_replacement, replacement_msg_data, replacement_seg->len);
 							skb_store_bits(skb, 0, replacement_msg_data, replacement_seg->len);
+							replacement_seg->hasReplaced = 1;
 							printk("Hollywood (PR): -+-+-+ replaced!\n");
 						}
 						if (padding_len > 0) {

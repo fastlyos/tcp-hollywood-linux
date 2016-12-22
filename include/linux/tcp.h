@@ -67,6 +67,7 @@ struct tcp_hlywd_outseg {
 	size_t len;
 	struct timespec queued;
 	int packed;
+	int hasReplaced;
 	struct tcp_hlywd_outseg *next;
 };
 
