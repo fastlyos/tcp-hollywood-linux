@@ -1098,8 +1098,6 @@ int tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 
 	lock_sock(sk);
 
-	printk("boom clap\n");
-
 	if (tp->preliability) {
 		printk("Hollywood (PR): tcp_sendmsg()\n");
 		unsigned char __user *hlywd_metadata_usr = msg->msg_iov->iov_base+msg->msg_iov->iov_len-(5 + (2*sizeof(struct timespec)));
