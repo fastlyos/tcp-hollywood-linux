@@ -917,6 +917,7 @@ static int tcp_transmit_skb(struct sock *sk, struct sk_buff *skb, int clone_it,
 	memset(&opts, 0, sizeof(opts));
 
 	if (tp->preliability && (skb->len-tcp_header_size) > 0) {
+	    printk("Hollywood (PR): sending TCP segment (seq: %u)\n", tcb->seq);
 		u32 bytes_from_start = tcb->seq-tp->snd_una;
 		size_t replacement_offset = tcb->seq-tp->snd_una;
 		struct timespec rtt;
@@ -941,6 +942,7 @@ static int tcp_transmit_skb(struct sock *sk, struct sk_buff *skb, int clone_it,
 				start_seg = start_seg->next;
 			}
 		}
+		
 		/* loop through all messages we're sending data from */
 		while (segment_length > 0 && start_seg != NULL) {
 			size_t send_len = (segment_length >= start_seg->len) ? start_seg->len : segment_length;
@@ -985,9 +987,11 @@ static int tcp_transmit_skb(struct sock *sk, struct sk_buff *skb, int clone_it,
 						struct sk_buff *replacement_skb = tcp_write_queue_head(sk);
 						while (replacement_skb->len <= bytes_to_replacement) {
 							bytes_to_replacement -= replacement_skb->len;
-							replacement_skb = tcp_write_queue_next(sk, replacement_skb);
+							if (!tcp_skb_is_last(sk, replacement_skb)) {
+							    replacement_skb = tcp_write_queue_next(sk, replacement_skb);
+						    }
 						}
-						void *replacement_msg_data = (void *) kmalloc(replacement_seg->len, GFP_KERNEL);
+					    void *replacement_msg_data = (void *) kmalloc(replacement_seg->len, GFP_KERNEL);
 						if (replacement_msg_data) {
 							skb_copy_bits(replacement_skb, bytes_to_replacement, replacement_msg_data, replacement_seg->len);
 							skb_store_bits(skb, 0, replacement_msg_data, replacement_seg->len);

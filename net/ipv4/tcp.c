@@ -1122,6 +1122,7 @@ int tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 				printk("Hollywood (PR) - playout set to %lld.%.9lds\n", (long long) tp->hlywd_playout.tv_sec, tp->hlywd_playout.tv_nsec);
 				hlywd_outseg->next = NULL;
 				hlywd_outseg->packed = 0;
+				hlywd_outseg->hasReplaced = 0;
 				if (tp->hlywd_outseg_head == NULL) {
 					tp->hlywd_outseg_head = hlywd_outseg;
 					tp->hlywd_outseg_tail = hlywd_outseg;
@@ -2544,17 +2545,17 @@ static int do_tcp_setsockopt(struct sock *sk, int level,
 	case TCP_PRELIABILITY:
 		tp->preliability = val ? 1 : 0;
 		if (tp->preliability) {
-			//printk("Hollywood: partial reliability enabled\n");
+			printk("Hollywood: partial reliability enabled\n");
 		} else {
-			//printk("Hollywood: partial reliability disabled\n");
+			printk("Hollywood: partial reliability disabled\n");
 		}
 		break;
 	case TCP_OODELIVERY:
 		tp->oodelivery = val ? 1 : 0;
 		if (tp->oodelivery) {
-			//printk("Hollywood: out-of-order delivery enabled\n");
+			printk("Hollywood: out-of-order delivery enabled\n");
 		} else {
-			//printk("Hollywood: out-of-order delivery disabled\n");
+			printk("Hollywood: out-of-order delivery disabled\n");
 			while (tp->hlywd_incseg_head != NULL) {
 				struct tcp_hlywd_incseg *next = tp->hlywd_incseg_head->next;
 				kfree(tp->hlywd_incseg_head);

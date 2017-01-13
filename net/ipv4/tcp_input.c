@@ -3075,6 +3075,7 @@ static int tcp_clean_rtx_queue(struct sock *sk, int prior_fackets,
 		while (acked_byte_count > 0) {
 			struct tcp_hlywd_outseg *hlywd_head = tp->hlywd_outseg_head;
 			if (hlywd_head == NULL) {
+		        printk("Hollywood (PR): head null!\n");
 				break;
 			}
 			if (hlywd_head->len <= acked_byte_count) {
@@ -3096,6 +3097,8 @@ static int tcp_clean_rtx_queue(struct sock *sk, int prior_fackets,
 			}
 		}
 	}
+
+	printk("Hollywood (PR): gets here\n");
 
 	while ((skb = tcp_write_queue_head(sk)) && skb != tcp_send_head(sk)) {
 		struct tcp_skb_cb *scb = TCP_SKB_CB(skb);
