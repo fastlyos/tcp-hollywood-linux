@@ -916,7 +916,7 @@ static int tcp_transmit_skb(struct sock *sk, struct sk_buff *skb, int clone_it,
 	tcb = TCP_SKB_CB(skb);	
 	memset(&opts, 0, sizeof(opts));
 
-	if (tp->preliability && (skb->len-tcp_header_size) > 0) {
+	if (tp->preliability && skb->len > 0) {
 	    printk("Hollywood (PR): sending TCP segment (seq: %u)\n", tcb->seq);
 		u32 bytes_from_start = tcb->seq-tp->snd_una;
 		size_t replacement_offset = tcb->seq-tp->snd_una;
@@ -924,7 +924,7 @@ static int tcp_transmit_skb(struct sock *sk, struct sk_buff *skb, int clone_it,
 		uint srtt_usec = (tp->srtt_us >> 3) / 2;
 		rtt.tv_sec = srtt_usec / 1000000;
 		rtt.tv_nsec = (srtt_usec % 1000000) * 1000;
-		unsigned int segment_length = skb->len-tcp_header_size;
+		unsigned int segment_length = skb->len;
 		printk("Hollywood (PR): bytes from start: %u\n", bytes_from_start);
 		printk("Hollywood (PR): one way delay: %lld.%.9ld\n", (long long) rtt.tv_sec, rtt.tv_nsec);
 		printk("Hollywood (PR): segment length: %u\n", segment_length);
