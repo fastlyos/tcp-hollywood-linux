@@ -24,6 +24,8 @@
 #include <net/inet_timewait_sock.h>
 #include <uapi/linux/tcp.h>
 
+#include <linux/hollywood.h>
+
 static inline struct tcphdr *tcp_hdr(const struct sk_buff *skb)
 {
 	return (struct tcphdr *)skb_transport_header(skb);
@@ -48,34 +50,6 @@ static inline unsigned int tcp_optlen(const struct sk_buff *skb)
 {
 	return (tcp_hdr(skb)->doff - 5) * 4;
 }
-
-/* TCP Hollywood - incoming segment metadata */
-struct tcp_hlywd_incseg {
-	u32	seq;
-	size_t len;
-	size_t offset;
-	void *data; /* copy of segment if out-of-order */
-	struct tcp_hlywd_incseg *next;
-};
-
-/* TCP Hollywood - outgoing segment metadata */
-struct tcp_hlywd_outseg {
-	uint8_t substream;
-	uint16_t seq;
-	uint16_t depseq;
-	struct timespec lifetime;
-	size_t len;
-	struct timespec queued;
-	int packed;
-	int hasReplaced;
-	struct tcp_hlywd_outseg *next;
-};
-
-/* TCP Hollywood - dependency metadata */
-struct tcp_hlywd_dep {
-	uint16_t depseq;
-	struct tcp_hlywd_dep *next;
-};
 
 /* TCP Fast Open */
 #define TCP_FASTOPEN_COOKIE_MIN	4	/* Min Fast Open Cookie size in bytes */
@@ -343,18 +317,18 @@ struct tcp_sock {
 	 * socket. Used to retransmit SYNACKs etc.
 	 */
 	struct request_sock *fastopen_rsk;
-
-/* TCP Hollywood */
-	int oodelivery;
-	struct tcp_hlywd_incseg *hlywd_incseg_head;
-	struct tcp_hlywd_incseg *hlywd_incseg_tail;
-    int hlywd_oo_count;
-    
-	int preliability;
-	struct timespec hlywd_playout;
-	struct tcp_hlywd_outseg *hlywd_outseg_head;
-	struct tcp_hlywd_outseg *hlywd_outseg_tail;
-	struct tcp_hlywd_dep	*hlywd_dep_q;
+	
+	/* TCP Hollywood */
+	u8	hlywd_ood;     /* deliver frames out-of-order? */
+	u8  hlywd_pr;      /* enable partial reliability?  */
+    u32 hlywd_highest_dep_id; /* highest message dependency ID seen */
+    uint8_t *hlywd_padding_buffer;
+	
+	struct hlywd_input_queue hlywd_input_q;
+	struct hlywd_input_queue hlywd_input_free_q;
+	
+	struct hlywd_output_queue hlywd_output_q;
+	struct hlywd_output_queue hlywd_output_free_q;
 };
 
 enum tsq_flags {

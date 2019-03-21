@@ -1951,15 +1951,15 @@ static void __release_sock(struct sock *sk)
 int sk_wait_data(struct sock *sk, long *timeo)
 {
 	int rc;
-	struct tcp_sock *tp = tcp_sk(sk);
+    struct tcp_sock *tp = tcp_sk(sk);
 	DEFINE_WAIT(wait);
+
 	prepare_to_wait(sk_sleep(sk), &wait, TASK_INTERRUPTIBLE);
 	set_bit(SOCK_ASYNC_WAITDATA, &sk->sk_socket->flags);
-	if (tp->oodelivery == 1) {
-		//printk("waiting..\n");
-		rc = sk_wait_event(sk, timeo, (!skb_queue_empty(&sk->sk_receive_queue) || !(tp->hlywd_oo_count == 0)));
+	if (tp->hlywd_ood) {
+	    rc = sk_wait_event(sk, timeo, (!skb_queue_empty(&sk->sk_receive_queue) || tp->hlywd_input_q.head != NULL));
 	} else {
-		rc = sk_wait_event(sk, timeo, !skb_queue_empty(&sk->sk_receive_queue));
+	    rc = sk_wait_event(sk, timeo, !skb_queue_empty(&sk->sk_receive_queue));
 	}
 	clear_bit(SOCK_ASYNC_WAITDATA, &sk->sk_socket->flags);
 	finish_wait(sk_sleep(sk), &wait);

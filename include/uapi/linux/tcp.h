@@ -112,11 +112,9 @@ enum {
 #define TCP_FASTOPEN		23	/* Enable FastOpen on listeners */
 #define TCP_TIMESTAMP		24
 #define TCP_NOTSENT_LOWAT	25	/* limit number of unsent bytes in write queue */
-#define TCP_OODELIVERY		27	/* enable out-of-order delivery of incoming segs */
-#define TCP_PRELIABILITY	28	/* enable partial reliability */
-#define TCP_HLYWD_PLAYOUT	29	/* set play-out delay for Hollywood */
-#define TCP_HLYWD_RTT       30
-#define TCP_HLYWD_PMTU      31
+#define TCP_HLYWD_OOD       27  /* TCP Hollywood: enable out-of-order delivery */
+#define TCP_HLYWD_PR        28  /* TCP Hollywood: enable partial reliability */
+#define TCP_HLYWD_PLAYOUT   29  /* TCP Hollywood: set play out delay */
 
 struct tcp_repair_opt {
 	__u32	opt_code;
